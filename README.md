@@ -10,8 +10,7 @@ This project enables the creation or modification of a Unity 3D game entirely th
 ### 📋 Prerequisites
 - ✅ Python 3.8+
 - ✅ Unity 3D Installed
-- ✅ OpenAI API Key (for AI Agents)
-- ✅ Google Gemini API Key
+- ✅ Google Gemini API Key (for AI Agents)
 
 ### 📂 Setup Instructions
 
