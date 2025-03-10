@@ -1,0 +1,14 @@
+google-generativeai
+Pillow
+python-docx
+asyncio
+logging
+typing-extensions
+json
+re
+os
+sys
+subprocess
+platform
+datetime
+tkinter
