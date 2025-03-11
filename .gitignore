@@ -1,7 +1,3 @@
 /.venv
-/brainstorm.md
-Game_Controller.md
-Game_Manager.md
-Game_UI.md
-Scenes.md
-ui_suggestions.md
+
+*.md
