@@ -1,3 +1,4 @@
 /.venv
 
 *.md
+/Agents/__pycache__
