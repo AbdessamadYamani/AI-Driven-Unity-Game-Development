@@ -15,8 +15,6 @@ This project enables the creation or modification of a Unity 3D game entirely th
 ### 📂 Setup Instructions
 
 ```sh
-
-
 # Install dependencies:
 pip install -r requirements.txt
 
@@ -25,6 +23,10 @@ pip install -r requirements.txt
 
 # Run the project:
 python main.py
+
+# To run the Learning Tutor separately:
+cd Agents
+python Tutor.py
 ```
 
 ---
@@ -33,6 +35,7 @@ python main.py
 
 | Agent | Description | Key Functions |
 |--------|---------------------------|------------------------------|
+| **Learning Tutor Agent** | AI-guided Unity game development tutor | `generate_learning_path()`, `validate_task_completion()`, `present_current_task()` |
 | **Brainstorming Agent** | Generates and refines game ideas, processes UI assets. | `read_brainstorm_file()`, `get_directory_structure()`, `get_gemini_ui_suggestion()` |
 | **Game Controller Agent** | Manages game logic and player mechanics. | `generate_initial(prompt)`, `handle_feedback(feedback, script)` |
 | **Game Manager Agent** | Oversees game flow and state transitions. | `initialize_game()`, `handle_game_state()` |
@@ -40,6 +43,63 @@ python main.py
 | **Game Scenes Agent** | Automates scene creation and level setup. | `setup_scene()`, `save_scene_state()` |
 | **Game Tester Agent** | Ensures all scripts function correctly. | `analyze_integration()`, `process_error(error_message)` |
 | **Code Editor Agent** | Modifies and updates existing Unity scripts. | `process_user_request(request)`, `scan_unity_project()` |
+
+---
+
+## 🎮 Learning Tutor Agent Details
+
+### 📌 Purpose
+The Learning Tutor Agent is a specialized AI-driven development assistant focused on guiding users through Unity game development, specifically tailored for creating a Dyslexia Support Educational Game.
+
+### 🚀 Workflow
+1. **Initialization**
+   - Requires Gemini API Key
+   - Specifies Unity Project Path
+   - Generates a comprehensive learning path
+
+2. **Interactive Learning Modes**
+   - **New Learning Path**: 
+     - Generates a step-by-step game development tutorial
+     - Creates tasks for each development stage
+   - **Continue Previous Progress**: 
+     - Loads existing project progress
+     - Resumes from last completed task
+
+3. **Task Completion Process**
+   - Presents detailed task instructions
+   - Monitors scene changes
+   - Validates task completion using AI
+   - Tracks and saves progress automatically
+
+### 🔍 Key Features
+- AI-powered task generation
+- Real-time scene monitoring
+- Automatic progress tracking
+- Gemini AI task validation
+- Asyncio-based concurrent processing
+
+### 🎯 Example Workflow
+```
+# Starting the Learning Tutor
+$ python Tutor.py
+
+# Prompts:
+> Enter your Gemini API Key: [YOUR_API_KEY]
+> Enter the path to your Unity project: /path/to/your/unity/project
+
+# Interactive Modes:
+1. Start a New Learning Path
+2. Continue Previous Progress
+3. Exit
+
+# Sample Task Example:
+Chapter 1: Vowel Island Setup
+Task 1: Create Vowel Island Main Camera
+- Open Hierarchy Window
+- Right-Click > 2D Object > Camera
+- Rename camera to 'VowelIslandCamera'
+- Position camera to capture entire Vowel Island scene
+```
 
 ---
 
@@ -59,9 +119,7 @@ python main.py
 - AI detects and fixes inconsistencies.
 - Unity errors are processed iteratively.
 
-### 4️⃣ Compilation & Deployment
-- The game is compiled and exported.
-- Users can refine and publish the final version.
+
 
 ---
 
@@ -71,12 +129,4 @@ python main.py
 2️⃣ **Script Development** - Game Controller & Manager generate mechanics.  
 3️⃣ **Scene Setup** - Scenes Agent structures game levels.  
 4️⃣ **Testing & Debugging** - Game Tester checks functionality.  
-5️⃣ **Code Refinement** - Code Editor modifies scripts.  
-6️⃣ **Integration & Compilation** - Final debugging and packaging.  
-7️⃣ **Deployment** - The completed game is released.  
-
----
-
-
----
-
+5️⃣ **Code Refinement** - Code Editor modifies scripts. 
