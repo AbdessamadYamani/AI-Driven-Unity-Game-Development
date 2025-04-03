@@ -976,7 +976,7 @@ class UnityLearningTutor:
                     "tasks": [
                         {{
                             "number": 1,
-                            "description": "Create Vowel Island Main Camera",
+                            "description": "Create Vowel Island Main Camera [Expected time to finish it]",
                             "explanation": "Set up the primary camera for Vowel Island to define the player's view",
                             "recommended_sprites": [
                                 "background_sprite.png",
@@ -1008,6 +1008,7 @@ class UnityLearningTutor:
         5. Script tasks should be properly connected with existing scripts
         6. If the recommended_sprites are empty mention that the user should add sprites and describe them in their names in the recommended_sprites section
         7. For each tasks that require a script add the script (not complete script just a part of it with description so the user can use it himself) add this in the steps section
+        8- It should be an expected time for each taskshown in the description of it
         """
             
             response = await self.generate_initial(prompt)
