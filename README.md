@@ -16,6 +16,9 @@ This project enables the creation or modification of a Unity 3D game entirely th
 
 ```sh
 # Install dependencies:
+python -m venv .venv
+.venv\Scripts\activate
+
 pip install -r requirements.txt
 
 # Configure API keys:
