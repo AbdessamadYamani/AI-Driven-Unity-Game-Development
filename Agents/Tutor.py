@@ -13,10 +13,12 @@ from typing import List, Dict, Any
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileSystemEvent
 import mammoth  # For .docx file handling
-
+import datetime,textwrap
+from collections import defaultdict
 # Import the scene analysis function
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from watchdog_tool import comprehensive_scene_analysis
+import msvcrt  # Windows-specific module for keyboard input
 
 # Color codes
 GREEN = "\033[92m"
@@ -24,6 +26,216 @@ BLUE = "\033[94m"
 CYAN = "\033[96m"
 RED = "\033[91m"
 RESET = "\033[0m"
+YELLOW = "\033[93m"
+try:
+    import docx  # For Word document generation
+except ImportError:
+    print(f"{YELLOW}python-docx not installed. Will use text file for reports instead.{RESET}")
+    print(f"{BLUE}To install: pip install python-docx{RESET}")
+
+
+def validate_gdd_with_octalysis(gemini_client, gdd_content: str) -> Dict:
+    """Validate the Game Design Document using Gemini AI and the Octalysis Framework"""
+    try:
+        # Suppress GRPC warnings
+        
+        # Octalysis framework prompt
+        prompt = f"""
+        You are a game design expert specializing in gamification through the Octalysis Framework.
+        
+        Analyze the following Game Design Document for a dyslexia support educational game:
+        
+        {gdd_content}
+        
+        Instructions:
+        1. Evaluate how well the GDD incorporates the 8 core drives of the Octalysis Framework:
+           - Epic Meaning & Calling
+           - Development & Accomplishment
+           - Empowerment of Creativity & Feedback
+           - Ownership & Possession
+           - Social Influence & Relatedness
+           - Scarcity & Impatience
+           - Unpredictability & Curiosity
+           - Loss & Avoidance
+        
+        2. For each core drive:
+           - Score the implementation on a scale of 1-10
+           - Provide specific examples from the GDD that demonstrate the core drive
+           - Suggest concrete improvements to strengthen this aspect
+        
+        3. Provide overall recommendations for gamification improvements
+        
+        4. Structure your response as a JSON object with the following format:
+        {{
+          "summary": "Brief overall assessment",
+          "octalysis_scores": {{
+            "epic_meaning": {{ "score": x, "examples": ["..."], "improvements": ["..."] }},
+            "development": {{ "score": x, "examples": ["..."], "improvements": ["..."] }},
+            "creativity": {{ "score": x, "examples": ["..."], "improvements": ["..."] }},
+            "ownership": {{ "score": x, "examples": ["..."], "improvements": ["..."] }},
+            "social": {{ "score": x, "examples": ["..."], "improvements": ["..."] }},
+            "scarcity": {{ "score": x, "examples": ["..."], "improvements": ["..."] }},
+            "unpredictability": {{ "score": x, "examples": ["..."], "improvements": ["..."] }},
+            "loss_avoidance": {{ "score": x, "examples": ["..."], "improvements": ["..."] }}
+          }},
+          "overall_score": x,
+          "top_recommendations": ["Recommendation 1", "Recommendation 2", "Recommendation 3"],
+          "implementation_priority": ["High priority item 1", "High priority item 2"]
+        }}
+        """
+        
+        # Generate Gemini response
+        response = gemini_client.generate_content(prompt)
+        
+        # Extract JSON from response
+        json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+        if json_match:
+            validation_results = json.loads(json_match.group(0))
+            return validation_results
+        else:
+            raise ValueError("Could not extract JSON from Gemini response")
+            
+    except Exception as e:
+        print(f"{RED}Error validating GDD: {e}{RESET}")
+        return {
+            "summary": "Error occurred during validation",
+            "error": str(e)
+        }
+
+def save_validation_report(validation_results: Dict, output_path: str, refinement_suggestions: str = None) -> str:
+    """
+    Save validation results to a Word document
+    
+    Args:
+        validation_results (Dict): Results from GDD validation
+        output_path (str): Base path to save the report
+        refinement_suggestions (str): Optional refinement suggestions to append
+        
+    Returns:
+        str: Path to the saved document
+    """
+    try:
+        from docx import Document
+        from docx.shared import Inches, Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        
+        # Create document
+        doc = Document()
+        
+        # Add title
+        title = doc.add_heading('Game Design Document Validation Report', 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Add summary
+        doc.add_heading('Executive Summary', 1)
+        doc.add_paragraph(validation_results['summary'])
+        
+        # Add overall score
+        doc.add_heading('Overall Octalysis Score', 1)
+        overall_para = doc.add_paragraph()
+        overall_para.add_run(f"{validation_results['overall_score']}/10").bold = True
+        
+        # Add core drives analysis
+        doc.add_heading('Core Drives Analysis', 1)
+        
+        # Define color coding for scores
+        def get_score_color(score):
+            if score <= 3:
+                return RGBColor(240, 0, 0)  # Red
+            elif score <= 6:
+                return RGBColor(255, 165, 0)  # Orange
+            else:
+                return RGBColor(0, 128, 0)  # Green
+        
+        # Process each core drive
+        for drive, details in validation_results['octalysis_scores'].items():
+            score = details['score']
+            drive_name = drive.replace('_', ' ').title()
+            
+            # Add heading for core drive
+            heading = doc.add_heading(f"{drive_name}: ", 2)
+            score_run = heading.add_run(f"{score}/10")
+            score_run.font.color.rgb = get_score_color(score)
+            
+            # Examples section
+            if details['examples']:
+                doc.add_heading("Current Implementation:", 3)
+                examples_para = doc.add_paragraph()
+                for example in details['examples']:
+                    examples_para.add_run(f"• {example}\n")
+            
+            # Improvements section
+            if details['improvements']:
+                doc.add_heading("Suggested Improvements:", 3)
+                improvements_para = doc.add_paragraph()
+                for improvement in details['improvements']:
+                    improvements_para.add_run(f"• {improvement}\n")
+                    
+        # Add top recommendations
+        doc.add_heading('Top Recommendations', 1)
+        for recommendation in validation_results['top_recommendations']:
+            doc.add_paragraph(f"• {recommendation}")
+            
+        # Add implementation priorities
+        doc.add_heading('Implementation Priorities', 1)
+        for priority in validation_results['implementation_priority']:
+            doc.add_paragraph(f"• {priority}")
+            
+        # Add refinement suggestions if provided
+        if refinement_suggestions:
+            doc.add_heading('Refinement Suggestions', 1)
+            doc.add_paragraph(refinement_suggestions)
+            
+        # Save document
+        import os
+        report_path = os.path.join(output_path, 'GDD_Validation_Report.docx')
+        doc.save(report_path)
+        
+        return report_path
+        
+    except ImportError:
+        # Fallback to text file if docx is not available
+        import os
+        report_path = os.path.join(output_path, 'GDD_Validation_Report.txt')
+        
+        with open(report_path, 'w') as f:
+            f.write("GAME DESIGN DOCUMENT VALIDATION REPORT\n")
+            f.write("====================================\n\n")
+            f.write(f"EXECUTIVE SUMMARY:\n{validation_results['summary']}\n\n")
+            f.write(f"OVERALL SCORE: {validation_results['overall_score']}/10\n\n")
+            
+            f.write("CORE DRIVES ANALYSIS:\n")
+            for drive, details in validation_results['octalysis_scores'].items():
+                drive_name = drive.replace('_', ' ').title()
+                f.write(f"\n{drive_name}: {details['score']}/10\n")
+                
+                f.write("Current Implementation:\n")
+                for example in details['examples']:
+                    f.write(f"• {example}\n")
+                    
+                f.write("Suggested Improvements:\n")
+                for improvement in details['improvements']:
+                    f.write(f"• {improvement}\n")
+            
+            f.write("\nTOP RECOMMENDATIONS:\n")
+            for recommendation in validation_results['top_recommendations']:
+                f.write(f"• {recommendation}\n")
+                
+            f.write("\nIMPLEMENTATION PRIORITIES:\n")
+            for priority in validation_results['implementation_priority']:
+                f.write(f"• {priority}\n")
+            
+            # Add refinement suggestions if provided
+            if refinement_suggestions:
+                f.write("\nREFINEMENT SUGGESTIONS:\n")
+                f.write("=======================\n\n")
+                f.write(refinement_suggestions)
+        
+        return report_path
+    except Exception as e:
+        print(f"{RED}Error saving validation report: {e}{RESET}")
+        return None
+
 
 def select_project_path() -> str:
     """
@@ -109,21 +321,220 @@ def extract_gdd_content(gdd_path: str) -> str:
         traceback.print_exc()
         return ""
 
-
+class MetricsLogger:
+    def __init__(self, project_path: str):
+        self.metrics_file = os.path.join(project_path, 'learning_metrics.md')
+        self.metrics = {
+            'start_time': datetime.datetime.now().isoformat(),
+            'end_time': None,
+            'gdd_refinements': 0,
+            'tasks': defaultdict(dict),
+            'chapters': defaultdict(dict),
+            'coin_transactions': [],
+            'script_purchases': 0,
+            'scene_analysis_count': 0,
+            'validation_attempts': defaultdict(int),
+            'menu_accesses': 0,
+            'current_coins': 0,
+            'errors': []
+        }
+        # Create initial metrics file
+        self._save_metrics()
+    
+    def log_task_start(self, chapter_num: int, task_num: int, task_title: str):
+        """Record when a task begins"""
+        task_key = f"chapter_{chapter_num}_task_{task_num}"
+        self.metrics['tasks'][task_key] = {
+            'title': task_title,
+            'start_time': datetime.datetime.now().isoformat(),
+            'end_time': None,
+            'completed': False,
+            'validation_attempts': 0
+        }
+        self._save_metrics()
+    
+    def log_task_completion(self, chapter_num: int, task_num: int, success: bool):
+        """Record when a task is completed"""
+        task_key = f"chapter_{chapter_num}_task_{task_num}"
+        if task_key in self.metrics['tasks']:
+            self.metrics['tasks'][task_key]['end_time'] = datetime.datetime.now().isoformat()
+            self.metrics['tasks'][task_key]['completed'] = success
+            if 'start_time' in self.metrics['tasks'][task_key]:
+                start = datetime.datetime.fromisoformat(self.metrics['tasks'][task_key]['start_time'])
+                end = datetime.datetime.now()
+                self.metrics['tasks'][task_key]['duration_seconds'] = (end - start).total_seconds()
+        self._save_metrics()
+    
+    def log_chapter_start(self, chapter_num: int, chapter_title: str):
+        """Record when a chapter begins"""
+        chapter_key = f"chapter_{chapter_num}"
+        self.metrics['chapters'][chapter_key] = {
+            'title': chapter_title,
+            'start_time': datetime.datetime.now().isoformat(),
+            'end_time': None,
+            'completed': False
+        }
+        self._save_metrics()
+    
+    def log_chapter_completion(self, chapter_num: int):
+        """Record when a chapter is completed"""
+        chapter_key = f"chapter_{chapter_num}"
+        if chapter_key in self.metrics['chapters']:
+            self.metrics['chapters'][chapter_key]['end_time'] = datetime.datetime.now().isoformat()
+            self.metrics['chapters'][chapter_key]['completed'] = True
+            if 'start_time' in self.metrics['chapters'][chapter_key]:
+                start = datetime.datetime.fromisoformat(self.metrics['chapters'][chapter_key]['start_time'])
+                end = datetime.datetime.now()
+                self.metrics['chapters'][chapter_key]['duration_seconds'] = (end - start).total_seconds()
+        self._save_metrics()
+    
+    def log_gdd_refinement(self):
+        """Record when GDD is refined"""
+        self.metrics['gdd_refinements'] += 1
+        self._save_metrics()
+    
+    def log_coin_transaction(self, amount: int, reason: str, current_balance: int):
+        """Record coin transactions"""
+        self.metrics['coin_transactions'].append({
+            'timestamp': datetime.datetime.now().isoformat(),
+            'amount': amount,
+            'reason': reason,
+            'balance': current_balance
+        })
+        self.metrics['current_coins'] = current_balance
+        self._save_metrics()
+    
+    def log_script_purchase(self):
+        """Record when full script is purchased"""
+        self.metrics['script_purchases'] += 1
+        self._save_metrics()
+    
+    def log_scene_analysis(self):
+        """Record scene analysis events"""
+        self.metrics['scene_analysis_count'] += 1
+        self._save_metrics()
+    
+    def log_validation_attempt(self, chapter_num: int, task_num: int):
+        """Record validation attempts"""
+        task_key = f"chapter_{chapter_num}_task_{task_num}"
+        self.metrics['validation_attempts'][task_key] += 1
+        if task_key in self.metrics['tasks']:
+            self.metrics['tasks'][task_key]['validation_attempts'] = self.metrics['validation_attempts'][task_key]
+        self._save_metrics()
+    
+    def log_menu_access(self):
+        """Record when user accesses the menu"""
+        self.metrics['menu_accesses'] += 1
+        self._save_metrics()
+    
+    def log_error(self, error: str):
+        """Record errors that occur"""
+        self.metrics['errors'].append({
+            'timestamp': datetime.datetime.now().isoformat(),
+            'error': error
+        })
+        self._save_metrics()
+    
+    def log_session_end(self):
+        """Record when the session ends"""
+        self.metrics['end_time'] = datetime.datetime.now().isoformat()
+        if 'start_time' in self.metrics:
+            start = datetime.datetime.fromisoformat(self.metrics['start_time'])
+            end = datetime.datetime.now()
+            self.metrics['total_duration_seconds'] = (end - start).total_seconds()
+        self._save_metrics()
+    
+    def _save_metrics(self):
+        """Save metrics to markdown file"""
+        try:
+            with open(self.metrics_file, 'w') as f:
+                f.write(self._format_metrics())
+        except Exception as e:
+            print(f"{RED}Error saving metrics: {e}{RESET}")
+    
+    def _format_metrics(self) -> str:
+        """Format metrics as markdown"""
+        md = "# Unity Learning Tutor Metrics Report\n\n"
+        md += f"## Session Overview\n"
+        md += f"- **Start Time**: {self.metrics['start_time']}\n"
+        md += f"- **End Time**: {self.metrics.get('end_time', 'Session in progress')}\n"
+        if 'total_duration_seconds' in self.metrics:
+            md += f"- **Total Duration**: {self.metrics['total_duration_seconds']:.2f} seconds\n"
+        md += f"- **GDD Refinements**: {self.metrics['gdd_refinements']}\n"
+        md += f"- **Script Purchases**: {self.metrics['script_purchases']}\n"
+        md += f"- **Scene Analyses**: {self.metrics['scene_analysis_count']}\n"
+        md += f"- **Menu Accesses**: {self.metrics['menu_accesses']}\n"
+        md += f"- **Current Coin Balance**: {self.metrics['current_coins']}\n\n"
+        
+        md += "## Coin Transactions\n"
+        md += "| Timestamp | Amount | Reason | Balance |\n"
+        md += "|-----------|--------|--------|---------|\n"
+        for tx in self.metrics['coin_transactions']:
+            md += f"| {tx['timestamp']} | {tx['amount']} | {tx['reason']} | {tx['balance']} |\n"
+        md += "\n"
+        
+        md += "## Chapter Progress\n"
+        for chapter_key, chapter_data in self.metrics['chapters'].items():
+            md += f"### {chapter_key.replace('_', ' ').title()}: {chapter_data.get('title', '')}\n"
+            md += f"- Started: {chapter_data.get('start_time', 'N/A')}\n"
+            md += f"- Completed: {chapter_data.get('end_time', 'Not completed')}\n"
+            if 'duration_seconds' in chapter_data:
+                md += f"- Duration: {chapter_data['duration_seconds']:.2f} seconds\n"
+            md += "\n"
+        
+        md += "## Task Details\n"
+        for task_key, task_data in self.metrics['tasks'].items():
+            md += f"### {task_key.replace('_', ' ').title()}: {task_data.get('title', '')}\n"
+            md += f"- Started: {task_data.get('start_time', 'N/A')}\n"
+            md += f"- Completed: {task_data.get('end_time', 'Not completed')}\n"
+            md += f"- Success: {task_data.get('completed', 'N/A')}\n"
+            md += f"- Validation Attempts: {task_data.get('validation_attempts', 0)}\n"
+            if 'duration_seconds' in task_data:
+                md += f"- Duration: {task_data['duration_seconds']:.2f} seconds\n"
+            md += "\n"
+        
+        md += "## Errors\n"
+        if self.metrics['errors']:
+            md += "| Timestamp | Error |\n"
+            md += "|-----------|-------|\n"
+            for error in self.metrics['errors']:
+                md += f"| {error['timestamp']} | {error['error']} |\n"
+        else:
+            md += "No errors recorded.\n"
+        md += "\n"
+        
+        md += "## Learning Path\n"
+        md += "```json\n"
+        md += json.dumps(self.metrics.get('learning_path', {}), indent=2)
+        md += "\n```\n"
+        
+        return md
 
 class UnityLearningTutor:
     def __init__(self, gemini_api_key: str, project_path: str, gdd_content: str):
         # Initialize Gemini AI
         genai.configure(api_key=gemini_api_key)
         self.gemini_client = genai.GenerativeModel('gemini-2.0-flash-exp')
-        
+        self.metrics_logger = MetricsLogger(project_path)
+
         # Project and learning path attributes
         self.project_path = project_path
         self.learning_path = {}
         self.current_chapter_index = 0
         self.current_task_index = 0
         self.gdd_content = gdd_content
+        self.user_coins = 0
+        self.script_detail_level = "Give only the functions and description of each one"
+        self.coin_rewards = {
+            "task_completion": 5,  # Coins earned for completing a task
+            "chapter_completion": 15  # Additional coins for completing a chapter
+        }
+        self.coin_costs = {
+            "full_script": 10  # Cost to get full script implementation
+        }
         
+        # Add to existing progress tracking
+        self.progress_file = os.path.join(project_path, 'dyslexia_game_progress.json')
         # Progress tracking
         self.progress_file = os.path.join(project_path, 'dyslexia_game_progress.json')
         
@@ -139,6 +550,142 @@ class UnityLearningTutor:
         
         # Load existing progress
         self.load_progress()
+
+    def display_coin_status(self):
+        """
+        Display current coin balance and available actions
+        """
+        print(f"\n{CYAN}=========== COIN BALANCE ==========={RESET}")
+        print(f"{GREEN}You have {self.user_coins} coins{RESET}")
+        print(f"{BLUE}Available actions:{RESET}")
+        print(f"- Complete tasks to earn {self.coin_rewards['task_completion']} coins")
+        print(f"- Complete chapters to earn {self.coin_rewards['chapter_completion']} additional coins")
+        print(f"- Purchase full script implementation for {self.coin_costs['full_script']} coins")
+        print(f"- Get a Bonus for 60 coins (does nothing)")
+        print(f"- Get a Penalty for 50 coins (does nothing)")
+        print(f"{CYAN}======================================{RESET}\n")
+
+    def award_coins(self, reason: str):
+        """
+        Award coins to the user based on achievement
+        
+        Args:
+            reason (str): Reason for awarding coins ('task_completion' or 'chapter_completion')
+        """
+        if reason in self.coin_rewards:
+            coins_earned = self.coin_rewards[reason]
+            self.user_coins += coins_earned
+            print(f"{GREEN}+{coins_earned} coins earned for {reason.replace('_', ' ')}!{RESET}")
+            self.save_progress()  # Save updated coin balance
+            self.display_coin_status()
+
+    def purchase_full_script(self) -> bool:
+        try:
+            cost = self.coin_costs["full_script"]
+            
+            if self.user_coins >= cost:
+                self.user_coins -= cost
+                self.script_detail_level = "Give the whole script"
+                self.metrics_logger.log_coin_transaction(-cost, "script_purchase", self.user_coins)
+                self.metrics_logger.log_script_purchase()
+                print(f"{GREEN}Purchase successful! {cost} coins deducted.{RESET}")
+                print(f"{BLUE}You will now receive the complete script implementation.{RESET}")
+                self.save_progress()
+                return True
+            else:
+                print(f"{RED}Not enough coins! You need {cost} coins but have {self.user_coins}.{RESET}")
+                return False
+        except Exception as e:
+            self.metrics_logger.log_error(f"Script purchase error: {str(e)}")
+            raise
+
+    def award_coins(self, reason: str):
+        try:
+            if reason in self.coin_rewards:
+                coins_earned = self.coin_rewards[reason]
+                self.user_coins += coins_earned
+                self.metrics_logger.log_coin_transaction(coins_earned, reason, self.user_coins)
+                print(f"{GREEN}+{coins_earned} coins earned for {reason.replace('_', ' ')}!{RESET}")
+                self.save_progress()
+                self.display_coin_status()
+        except Exception as e:
+            self.metrics_logger.log_error(f"Coin award error: {str(e)}")
+            raise
+
+
+    def check_script_task(self, task: Dict) -> bool:
+        """
+        Check if a task involves scripting
+        
+        Args:
+            task (Dict): Task details
+        
+        Returns:
+            bool: True if the task involves scripting, False otherwise
+        """
+        # Keywords that indicate a scripting task
+        script_keywords = [
+            'script', 'coding', 'programming', 'C#', 'csharp', 
+            'function', 'method', 'class', 'component'
+        ]
+        
+        # Check task description and explanation
+        task_text = (task.get('description', '') + ' ' + 
+                    task.get('explanation', '')).lower()
+        
+        # Check for script keywords
+        for keyword in script_keywords:
+            if keyword.lower() in task_text:
+                return True
+        
+        # Check if expected object contains scripting components
+        expected_object = task.get('expected_object', {})
+        components = expected_object.get('components', [])
+        
+        for component in components:
+            if 'script' in component.lower() or 'behavior' in component.lower():
+                return True
+        
+        return False
+
+    def get_existing_scripts(self) -> str:
+        """
+        Scan the project for existing C# scripts to provide context
+        
+        Returns:
+            str: Formatted string of existing scripts and their content
+        """
+        scripts_content = ""
+        script_count = 0
+        
+        # Path to scripts folder
+        scripts_path = os.path.join(self.project_path, 'Assets', 'Scripts')
+        
+        if not os.path.exists(scripts_path):
+            return "No existing scripts found."
+        
+        # Collect script files
+        for root, _, files in os.walk(scripts_path):
+            for file in files:
+                if file.endswith('.cs'):
+                    script_path = os.path.join(root, file)
+                    try:
+                        with open(script_path, 'r', encoding='utf-8') as script_file:
+                            content = script_file.read()
+                            scripts_content += f"\n--- {file} ---\n"
+                            scripts_content += content
+                            scripts_content += "\n\n"
+                            script_count += 1
+                    except Exception as e:
+                        scripts_content += f"\nError reading {file}: {e}\n"
+        
+        if script_count == 0:
+            return "No existing scripts found."
+        
+        return scripts_content
+
+
+
 
     def extract_json(response: str) -> Dict:
         """
@@ -180,12 +727,14 @@ class UnityLearningTutor:
 
     def save_progress(self):
         """
-        Save current learning progress to a JSON file, including the full learning path
+        Save current learning progress to a JSON file, including coins and script detail level
         """
         progress_data = {
-            'learning_path': self.learning_path,  # Save the entire learning path
+            'learning_path': self.learning_path,
             'current_chapter_index': self.current_chapter_index,
-            'current_task_index': self.current_task_index
+            'current_task_index': self.current_task_index,
+            'user_coins': self.user_coins,
+            'script_detail_level': self.script_detail_level
         }
         
         try:
@@ -248,7 +797,14 @@ class UnityLearningTutor:
                     progress_data = json.load(f)
                 
                 # Verify the progress data has all required keys
-                if all(key in progress_data for key in ['learning_path', 'current_chapter_index', 'current_task_index']):
+                required_keys = ['learning_path', 'current_chapter_index', 'current_task_index']
+                if all(key in progress_data for key in required_keys):
+                    # Load coin balance and script detail level if available
+                    if 'user_coins' in progress_data:
+                        self.user_coins = progress_data['user_coins']
+                    if 'script_detail_level' in progress_data:
+                        self.script_detail_level = progress_data['script_detail_level']
+                    
                     return progress_data
                 else:
                     print(f"{RED}Incomplete progress data found.{RESET}")
@@ -358,19 +914,15 @@ class UnityLearningTutor:
         return sprite_details
 
     async def generate_learning_path(self) -> Dict:
-        """
-        Generate a comprehensive learning path for the Dyslexia Support Game
-        Enhanced with available UI sprite information and GDD insights
-        """
-        # Get UI sprite structure
-        sprite_structure = self.get_directory_structure()
-        sprite_details = self.prepare_sprite_details_for_gemini(sprite_structure)
-        
-        game_concept = f"""
+        try:
+            sprite_structure = self.get_directory_structure()
+            sprite_details = self.prepare_sprite_details_for_gemini(sprite_structure)
+            
+            game_concept = f"""
         Game Concept for Dyslexia Support Educational Game
         
         Game Design Document Insights:
-        {self.gdd_content[:1000]}  # Limit to first 1000 characters to prevent overwhelming the prompt
+        {self.gdd_content[:1000]}
         
         Target Audience: Children with dyslexia
         Purpose: Address challenges in vowel and consonant recognition, sound blending, and word formation
@@ -383,8 +935,8 @@ class UnityLearningTutor:
 
         Objective: Create an interactive, educational game that supports children with dyslexia in language learning
         """
-        
-        prompt = f"""
+            
+            prompt = f"""
         Create a comprehensive JSON learning path for Unity game development, focusing on creating an educational game for children with dyslexia.
 
         Game Concept Details:
@@ -447,24 +999,27 @@ class UnityLearningTutor:
             ]
         }}
         """
-        
-        try:
+            prompt += """
+        Additional Requirements:
+        1. Include scripting tasks that involve creating C# scripts for game functionality
+        2. Distribute scripting tasks evenly across chapters
+        3. For scripting tasks, specify the script filename and basic functionality
+        4. Each chapter should have at least one scripting task
+        5. Script tasks should be properly connected with existing scripts
+        6. If the recommended_sprites are empty mention that the user should add sprites and describe them in their names in the recommended_sprites section
+        7. For each tasks that require a script add the script (not complete script just a part of it with description so the user can use it himself) add this in the steps section
+        """
+            
             response = await self.generate_initial(prompt)
             
-            # Robust JSON extraction function
             def extract_json(text: str) -> Dict:
-                # First, try to extract JSON using regex
                 json_match = re.search(r'\{.*\}', text, re.DOTALL | re.MULTILINE)
                 
                 if json_match:
                     try:
-                        # Attempt to parse the JSON
-                        learning_path = json.loads(json_match.group(0))
-                        return learning_path
+                        return json.loads(json_match.group(0))
                     except json.JSONDecodeError:
-                        # If direct parsing fails, try more aggressive cleaning
                         try:
-                            # Remove any text before the first '{' and after the last '}'
                             cleaned_text = text[text.index('{'):text.rindex('}')+1]
                             return json.loads(cleaned_text)
                         except (ValueError, json.JSONDecodeError):
@@ -474,12 +1029,11 @@ class UnityLearningTutor:
                 
                 raise ValueError("No valid JSON found in the response")
             
-            # Extract and return the learning path
             learning_path = extract_json(response)
             return learning_path
         
         except Exception as e:
-            print(f"{RED}Error generating learning path: {e}{RESET}")
+            self.metrics_logger.log_error(f"Learning path generation error: {str(e)}")
             traceback.print_exc()
             raise
 
@@ -497,101 +1051,254 @@ class UnityLearningTutor:
             print(f"{RED}Gemini AI Error: {e}{RESET}")
             raise
 
+
+    async def show_coin_options_menu(self, current_task: Dict) -> bool:
+        """
+        Show coin options menu and return True if full script was purchased
+        """
+        while True:
+            print(f"\n{CYAN}=========== COIN MENU ==========={RESET}")
+            print(f"{GREEN}You have {self.user_coins} coins{RESET}")
+            print(f"{BLUE}Available options:{RESET}")
+            print(f"1. Purchase full script implementation for {self.coin_costs['full_script']} coins")
+            print(f"2. Get a Bonus for 60 coins (does nothing)")
+            print(f"3. Get a Penalty for 50 coins (does nothing)")
+            print(f"4. Continue with current script detail level ({self.script_detail_level})")
+            print(f"{CYAN}======================================{RESET}\n")
+            
+            choice = input(f"{CYAN}Enter your choice (1-4): {RESET}").strip()
+            
+            if choice == '1':
+                if self.user_coins >= self.coin_costs['full_script']:
+                    self.user_coins -= self.coin_costs['full_script']
+                    self.script_detail_level = "Give the whole script"
+                    self.metrics_logger.log_coin_transaction(
+                        -self.coin_costs['full_script'],
+                        "script_purchase", 
+                        self.user_coins
+                    )
+                    self.metrics_logger.log_script_purchase()
+                    self.save_progress()
+                    return True  # Indicate full script was purchased
+                else:
+                    print(f"{RED}Not enough coins! You need {self.coin_costs['full_script']} coins but have {self.user_coins}.{RESET}")
+            elif choice == '2':
+                if self.user_coins >= 60:
+                    self.user_coins -= 60
+                    print(f"{YELLOW}You spent 60 coins for a Bonus! (This does nothing){RESET}")
+                    self.save_progress()
+                else:
+                    print(f"{RED}Not enough coins! You need 60 coins but have {self.user_coins}.{RESET}")
+            elif choice == '3':
+                if self.user_coins >= 50:
+                    self.user_coins -= 50
+                    print(f"{YELLOW}You spent 50 coins for a Penalty! (This does nothing){RESET}")
+                    self.save_progress()
+                else:
+                    print(f"{RED}Not enough coins! You need 50 coins but have {self.user_coins}.{RESET}")
+            elif choice == '4':
+                return False  # No purchase made
+            else:
+                print(f"{RED}Invalid choice. Please enter a number between 1 and 4.{RESET}")
+
+
+    def wait_for_command(self, command_event, current_task):
+        """
+        Listen for user commands while waiting for scene changes
+        """
+        try:
+            print(f"{CYAN}Type 'menu' at any time to access coin options.{RESET}")
+            
+            # Windows-compatible input checking
+            while not self._scene_change_flag.is_set() and not command_event.is_set():
+                if msvcrt.kbhit():  # Check if a key was pressed
+                    key = msvcrt.getch().decode('utf-8')
+                    if key == '\r':  # Enter key
+                        user_input = input()  # Now get the full input line
+                        if user_input.lower() == 'menu':
+                            print(f"{CYAN}Opening coin options menu...{RESET}")
+                            command_event.set()
+                            return
+                    
+                time.sleep(0.1)  # Small delay to prevent high CPU usage
+                
+        except Exception as e:
+            self.metrics_logger.log_error(f"Command input error: {str(e)}")
+            print(f"{RED}Command input error: {e}{RESET}")
+
+
     async def validate_task_completion(self, current_task: Dict) -> bool:
         """
         Validate task completion using scene analysis and Gemini AI
-        First check if task objects already exist
+        Handles coin purchases and script regeneration with proper user feedback
         """
-        # Perform scene analysis
-        scene_analysis = comprehensive_scene_analysis(self.project_path)
-        self.scene_analysis_count += 1
-        
-        # Prepare validation prompt to check for pre-existing tasks
-        validation_prompt = f"""
-    Context: You are a Unity game development expert reviewing a pre-existing scene.
-
-    Scene Analysis:
-    {json.dumps(scene_analysis, indent=2)}
-
-    Task Details:
-    {json.dumps(current_task, indent=2)}
-
-    Validation Instructions:
-    1. Carefully review the scene analysis
-    2. Check if the expected object for this task already exists in the scene
-    3. If the object exists, respond with 'pre-existing'
-    4. If the object does not exist, respond with 'not-created'
-    5. Look for exact name and type matching the task's expected object
-
-    ANSWER WITH ONLY ONE WORD with 0 explanation - just one word
-    Evaluation Question: Are the task's expected objects already present in the scene?
-    """
-        
         try:
-            # Get Gemini validation
-            validation_response = await self.generate_initial(validation_prompt)
+            current_chapter = self.learning_path['chapters'][self.current_chapter_index]
             
-            # Extract validation result
-            match = re.search(r'\b(pre-existing|not-created)\b', validation_response.lower())
+            # Log validation attempt
+            self.metrics_logger.log_validation_attempt(
+                current_chapter['number'],
+                current_task['number']
+            )
             
-            if match and match.group(1) == 'pre-existing':
-                # Task objects already exist
-                print(f"{GREEN}✓ You have already created: {current_task['description']}{RESET}")
+            # Check if this is a scripting task
+            is_script_task = self.check_script_task(current_task)
+            
+            if is_script_task:
+                # Show scripting options BEFORE monitoring begins
+                print(f"\n{CYAN}=== SCRIPTING TASK ==={RESET}")
+                print(f"Current detail level: {self.script_detail_level}")
+                print(f"Your coins: {self.user_coins} (Need {self.coin_costs['full_script']} for full script)")
                 
-                # Automatically mark as completed and save progress
-                self.save_progress()
-                return True
+                # Only offer purchase if not already at full detail
+                if self.script_detail_level != "Give the whole script":
+                    choice = input(f"{CYAN}Purchase full script now? (y/n): {RESET}").strip().lower()
+                    if choice == 'y':
+                        if self.user_coins >= self.coin_costs['full_script']:
+                            self.user_coins -= self.coin_costs['full_script']
+                            self.script_detail_level = "Give the whole script"
+                            self.metrics_logger.log_coin_transaction(
+                                -self.coin_costs['full_script'],
+                                "script_purchase",
+                                self.user_coins
+                            )
+                            self.metrics_logger.log_script_purchase()
+                            print(f"{GREEN}Full script purchased!{RESET}")
+                        else:
+                            print(f"{RED}Not enough coins! Continuing with basic script.{RESET}")
+                
+                # Generate and show script based on current detail level
+                script_content = await self.generate_script_content(current_task)
+                print(f"\n{BLUE}=== SCRIPT CONTENT ==={RESET}")
+                print(script_content)
+                print(f"{BLUE}====================={RESET}")
+                print(f"\n{CYAN}Implement this script in your Unity project{RESET}")
+                input(f"{CYAN}Press Enter when ready to continue...{RESET}")
             
-            # Wait for scene change signal if not pre-existing
-            print(f"{CYAN}Waiting for scene change... (Press Ctrl+C to cancel){RESET}")
-            try:
-                # Wait for either the event or a timeout
-                await asyncio.wait_for(self.wait_for_scene_change(), timeout=600)  # 10-minute timeout
-            except asyncio.TimeoutError:
-                print(f"{RED}Task completion timeout. Please complete the task.{RESET}")
-                return False
+            # Now begin scene monitoring
+            print(f"\n{GREEN}=== TASK VALIDATION ==={RESET}")
+            print(f"Validating: {current_task['description']}")
+            print(f"{CYAN}I'll check your changes when you save the scene{RESET}")
+            print(f"{YELLOW}Type 'menu' at any time for options{RESET}")
             
-            # Perform standard validation for newly created objects
+            # Reset scene change flag
+            self._scene_change_flag.clear()
+            
+            # Initial scene analysis
+            scene_analysis = comprehensive_scene_analysis(self.project_path)
+            self.scene_analysis_count += 1
+            self.metrics_logger.log_scene_analysis()
+            
+            # Check if task is already completed
+            pre_existing_prompt = f"""
+            Analyze this Unity scene for pre-existing task objects:
+            
+            Scene Analysis:
+            {json.dumps(scene_analysis, indent=2)}
+            
+            Task Requirements:
+            {json.dumps(current_task, indent=2)}
+            
+            Respond ONLY with 'pre-existing' if all requirements are met exactly,
+            or 'not-created' if anything is missing.
+            """
+            
+            pre_existing_response = await self.generate_initial(pre_existing_prompt)
+            if 'pre-existing' in pre_existing_response.lower():
+                print(f"{GREEN}✓ Task appears already completed!{RESET}")
+                confirm = input(f"{CYAN}Confirm completion? (y/n): {RESET}").strip().lower()
+                if confirm == 'y':
+                    self.metrics_logger.log_task_completion(
+                        current_chapter['number'],
+                        current_task['number'],
+                        True
+                    )
+                    self.save_progress()
+                    return True
+            
+            # Main monitoring loop
+            start_time = time.time()
+            timeout = 300  # 5 minute timeout
+            
+            while True:
+                # Check for scene changes
+                if self._scene_change_flag.is_set():
+                    print(f"{GREEN}Scene change detected! Validating...{RESET}")
+                    break
+                    
+                # Check for timeout
+                if time.time() - start_time > timeout:
+                    print(f"{YELLOW}Validation timeout. Try again.{RESET}")
+                    return False
+                    
+                # Non-blocking menu check
+                if msvcrt.kbhit():
+                    key = msvcrt.getch().decode('utf-8', 'ignore')
+                    if key == '\r':  # Enter key
+                        cmd = input().strip().lower()
+                        if cmd == 'menu':
+                            print(f"{CYAN}Opening coin options...{RESET}")
+                            purchased_full_script = await self.show_coin_options_menu(current_task)
+                            
+                            if purchased_full_script:
+                                # Regenerate and show full script if purchased
+                                print(f"{GREEN}Regenerating script with full implementation...{RESET}")
+                                script_content = await self.generate_script_content(current_task)
+                                print(f"\n{BLUE}=== FULL SCRIPT IMPLEMENTATION ==={RESET}")
+                                print(script_content)
+                                print(f"{BLUE}=================================={RESET}")
+                                input(f"{CYAN}Press Enter when ready to continue validation...{RESET}")
+                            
+                            print(f"{CYAN}Resuming validation...{RESET}")
+                            # Reset timeout when returning from menu
+                            start_time = time.time()
+                
+                await asyncio.sleep(0.5)
+            
+            # Perform validation after scene change
             validation_prompt = f"""
-    Context: You are a Unity game development expert validating a task completion for a dyslexia support game.
-
-    Scene Analysis:
-    {json.dumps(scene_analysis, indent=2)}
-
-    Task Details:
-    {json.dumps(current_task, indent=2)}
-
-    Validation Instructions:
-    1. Carefully review the scene analysis
-    2. Compare the scene with the task's requirements
-    3. Respond with a precise 'yes' or 'no'
-    4. If 'no', provide a brief explanation of what's missing
-    Note: if you spot the object was created like what the task asks for, say yes
-
-    ANSWER WITH ONLY ONE WORD with 0 explanation - just one word
-    Evaluation Question: Has the user successfully created the specified object exactly as required?
-    """
+            Validate this Unity scene against task requirements:
             
-            # Get Gemini validation
+            Scene Analysis:
+            {json.dumps(comprehensive_scene_analysis(self.project_path), indent=2)}
+            
+            Task Requirements:
+            {json.dumps(current_task, indent=2)}
+            
+            Respond with JSON containing:
+            {{
+                "completed": boolean,
+                "feedback": "detailed explanation",
+                "missing_components": [list of missing items]
+            }}
+            """
+            
             validation_response = await self.generate_initial(validation_prompt)
             
-            # Print Gemini's detailed response
-            print(f"\n{BLUE}Validation Result:{RESET}")
-            print(validation_response)
-            
-            # Extract yes/no response using regex
-            match = re.search(r'\b(yes|no)\b', validation_response.lower())
-            
-            task_completed = match.group(1) == 'yes' if match else False
-            
-            # Save progress if task is completed
-            if task_completed:
-                self.save_progress()
-            
-            return task_completed
-        
+            try:
+                validation_result = json.loads(re.search(r'\{.*\}', validation_response, re.DOTALL).group(0))
+                print(f"\n{BLUE}Validation Result:{RESET}")
+                print(validation_result.get("feedback", "No feedback provided"))
+                
+                if validation_result.get("completed", False):
+                    self.metrics_logger.log_task_completion(
+                        current_chapter['number'],
+                        current_task['number'],
+                        True
+                    )
+                    self.award_coins('task_completion')
+                    self.save_progress()
+                    return True
+                
+                return False
+                
+            except Exception as e:
+                print(f"{RED}Validation error: {e}{RESET}")
+                return False
+
         except Exception as e:
-            print(f"{RED}Task validation error: {e}{RESET}")
+            self.metrics_logger.log_error(f"Task validation failed: {str(e)}")
+            print(f"{RED}Error during validation: {e}{RESET}")
             return False
 
     async def wait_for_scene_change(self):
@@ -606,132 +1313,344 @@ class UnityLearningTutor:
 
     async def present_current_task(self) -> bool:
         """
-        Present the current task to the user
+        Present the current task to the user with clear instructions
         """
         if not self.learning_path or self.current_chapter_index >= len(self.learning_path['chapters']):
-            print(f"{GREEN}Congratulations! You've completed the Dyslexia Support Game development tutorial.{RESET}")
+            print(f"{GREEN}=== TUTORIAL COMPLETE ==={RESET}")
+            print(f"You've finished all chapters!")
             return False
         
         current_chapter = self.learning_path['chapters'][self.current_chapter_index]
         
         if self.current_task_index >= len(current_chapter['tasks']):
+            # Chapter complete
+            self.award_coins('chapter_completion')
             self.current_chapter_index += 1
             self.current_task_index = 0
             return await self.present_current_task()
         
         current_task = current_chapter['tasks'][self.current_task_index]
         
-        # Clear screen
+        # Clear screen and show header
         os.system('cls' if os.name == 'nt' else 'clear')
+        print(f"{CYAN}=== UNITY LEARNING TUTOR ==={RESET}")
+        self.display_coin_status()
         
-        # Display task information
-        print(f"{BLUE}Chapter {current_chapter['number']}: {current_chapter.get('title', 'Unnamed Chapter')}{RESET}")
-        print(f"{CYAN}Task {current_task['number']}: {current_task['description']}{RESET}")
+        # Show task info
+        print(f"\n{BLUE}CHAPTER {current_chapter['number']}: {current_chapter['title']}{RESET}")
+        print(f"{GREEN}TASK {current_task['number']}: {current_task['description']}{RESET}")
         
-        # Display task explanation
-        print(f"\n{GREEN}Task Explanation:{RESET}")
-        print(current_task.get('explanation', 'No additional explanation provided.'))
+        # Task details
+        print(f"\n{YELLOW}Explanation:{RESET}")
+        print(textwrap.fill(current_task.get('explanation', 'No additional explanation'), width=80))
         
-        # Display task steps
-        print(f"\n{BLUE}Creation Steps:{RESET}")
-        for step in current_task.get('steps', []):
-            print(f"• {step}")
+        print(f"\n{CYAN}Steps to Complete:{RESET}")
+        for i, step in enumerate(current_task.get('steps', []), 1):
+            print(f"{i}. {step}")
         
-        print(f"\n{CYAN}I'm waiting for you to complete the task: {current_task['description']} ...{RESET}")
-        print(f"{GREEN}Instructions: Save your Unity scene after completing the task.{RESET}")
+        # Special handling for scripting tasks
+        if self.check_script_task(current_task):
+            print(f"\n{YELLOW}NOTE: This task involves scripting!{RESET}")
+            print(f"Current script detail level: {self.script_detail_level}")
         
-        # Reset scene change flag
-        self._scene_change_flag.clear()
-        
+        print(f"\n{GREEN}When ready, implement these changes in Unity{RESET}")
+        print(f"The tutor will validate your work when you save the scene")
         return True
 
     async def run_learning_path(self):
-        """
-        Main execution method for learning path
-        """
         try:
-            # Choose start mode
             start_mode = self.choose_start_mode()
             
-            # Generate learning path if in new mode or no existing path
             if start_mode == 'new' or not self.learning_path:
                 self.learning_path = await self.generate_learning_path()
-                # Reset progress
                 self.current_chapter_index = 0
                 self.current_task_index = 0
             
-            # Setup watchdog for project monitoring
             self.setup_watchdog()
+            self.metrics_logger.metrics['learning_path'] = self.learning_path
             
-            # Main learning loop
             while await self.present_current_task():
-                # Validate task completion
-                current_task = self.learning_path['chapters'][self.current_chapter_index]['tasks'][self.current_task_index]
+                current_chapter = self.learning_path['chapters'][self.current_chapter_index]
+                current_task = current_chapter['tasks'][self.current_task_index]
+                
+                if self.current_task_index == 0:
+                    self.metrics_logger.log_chapter_start(
+                        current_chapter['number'],
+                        current_chapter.get('title', 'Untitled Chapter')
+                    )
+                
+                self.metrics_logger.log_task_start(
+                    current_chapter['number'],
+                    current_task['number'],
+                    current_task.get('description', 'Untitled Task')
+                )
+                
                 task_completed = await self.validate_task_completion(current_task)
                 
                 if task_completed:
+                    self.metrics_logger.log_task_completion(
+                        current_chapter['number'],
+                        current_task['number'],
+                        True
+                    )
+                    
+                    if self.current_task_index == len(current_chapter['tasks']) - 1:
+                        self.metrics_logger.log_chapter_completion(current_chapter['number'])
+                    
                     print(f"{GREEN}Task completed successfully!{RESET}")
                     print(f"{CYAN}Scene analysis performed {self.scene_analysis_count} times.{RESET}")
+                    self.award_coins('task_completion')
+                    input(f"{CYAN}Press Enter to continue to the next task...{RESET}")
                     self.current_task_index += 1
-                    
-                    # Save progress after each task
                     self.save_progress()
-                
-                # Add a small delay to prevent rapid cycling
-                await asyncio.sleep(2)
+                else:
+                    print(f"{YELLOW}Please complete the task and save your scene.{RESET}")
+                    await asyncio.sleep(3)
         
         except Exception as e:
-            print(f"{RED}Learning path execution error: {e}{RESET}")
+            self.metrics_logger.log_error(f"Learning path error: {str(e)}")
             traceback.print_exc()
         finally:
+            self.metrics_logger.log_session_end()
             self.cleanup_watchdog()
 
-    def setup_watchdog(self):
+    def command_listener(self):
         """
-        Setup file system watchdog for project monitoring
+        Listen for user commands during script tasks
         """
-        class ProjectWatchdog(FileSystemEventHandler):
-            def __init__(self, learning_tutor):
-                self.learning_tutor = learning_tutor
-                self.last_analyzed_time = 0
+        try:
+            user_input = input(f"{CYAN}Enter 'buy-script' to purchase full script, 'bonus' for a Bonus (60 coins), 'penalty' for a Penalty (50 coins), or press Enter to continue: {RESET}").strip()
             
-            def on_modified(self, event):
-                # Only react to Unity scene files
-                if not event.is_directory and event.src_path.endswith('.unity'):
-                    current_time = time.time()
-                    if current_time - self.last_analyzed_time > 2:  # 2-second cooldown
-                        self.last_analyzed_time = current_time
-                        print(f"{GREEN}Scene saved! Processing changes...{RESET}")
-                        # Set the thread-safe scene change flag
-                        self.learning_tutor._scene_change_flag.set()
+            if user_input.lower() == 'buy-script':
+                purchased = self.purchase_full_script()
+                
+                if purchased:
+                    # Force redraw of current task to show updated script information
+                    print(f"{GREEN}Script detail level updated to: {self.script_detail_level}{RESET}")
+                    print(f"{GREEN}The next time you view a script, you'll get the full implementation.{RESET}")
+            elif user_input.lower() == 'bonus':
+                if self.user_coins >= 60:
+                    self.user_coins -= 60
+                    print(f"{YELLOW}You spent 60 coins for a Bonus! (This does nothing){RESET}")
+                    self.save_progress()  # Save updated coin balance
+                    self.display_coin_status()
+                else:
+                    print(f"{RED}Not enough coins! You need 60 coins but have {self.user_coins}.{RESET}")
+            elif user_input.lower() == 'penalty':
+                if self.user_coins >= 50:
+                    self.user_coins -= 50
+                    print(f"{YELLOW}You spent 50 coins for a Penalty! (This does nothing){RESET}")
+                    self.save_progress()  # Save updated coin balance
+                    self.display_coin_status()
+                else:
+                    print(f"{RED}Not enough coins! You need 50 coins but have {self.user_coins}.{RESET}")
+        except Exception as e:
+            print(f"{RED}Command input error: {e}{RESET}")
+
+
+    async def generate_script_content(self, task: Dict) -> str:
+        try:
+            existing_scripts = self.get_existing_scripts()
+            
+            prompt = f"""
+        Task: {task['description']}
         
-        self.watchdog = ProjectWatchdog(self)
-        self.watchdog_observer = Observer()
-        self.watchdog_observer.schedule(self.watchdog, self.project_path, recursive=True)
-        self.watchdog_observer.start()
+        Task Explanation: {task.get('explanation', 'No additional explanation provided.')}
+        
+        Expected Object:
+        {json.dumps(task.get('expected_object', {}), indent=2)}
+        
+        Detail Level: {self.script_detail_level}
+        
+        Existing Scripts Context:
+        {existing_scripts}
+        
+        Instructions:
+        1. Generate Unity C# script content for this task
+        2. Make sure the script works with existing scripts
+        3. Follow the detail level requested
+        4. If detail level is "Give only the functions and description of each one", 
+        provide a skeleton with function signatures and comments
+        5. If detail level is "Give the whole script", provide complete implementation
+        6. Ensure script includes proper namespace, imports, and class structure
+        7. Consider integration with the dyslexia game context
+        
+        Format the output as a Unity C# script ready to be copied into a .cs file.
+        """
+            
+            script_response = await self.generate_initial(prompt)
+            code_block = re.search(r'```csharp\n(.*?)```', script_response, re.DOTALL)
+            
+            if code_block:
+                return code_block.group(1).strip()
+            else:
+                return script_response
+        
+        except Exception as e:
+            self.metrics_logger.log_error(f"Script generation error: {str(e)}")
+            return f"Error generating script: {e}"
+
+
+    def setup_watchdog(self):
+        try:
+            class ProjectWatchdog(FileSystemEventHandler):
+                def __init__(self, learning_tutor):
+                    self.learning_tutor = learning_tutor
+                    self.last_analyzed_time = 0
+                
+                def on_modified(self, event):
+                    if not event.is_directory and event.src_path.endswith('.unity'):
+                        current_time = time.time()
+                        if current_time - self.last_analyzed_time > 2:
+                            self.last_analyzed_time = current_time
+                            print(f"{GREEN}Scene saved! Processing changes...{RESET}")
+                            self.learning_tutor._scene_change_flag.set()
+            
+            self.watchdog = ProjectWatchdog(self)
+            self.watchdog_observer = Observer()
+            self.watchdog_observer.schedule(self.watchdog, self.project_path, recursive=True)
+            self.watchdog_observer.start()
+        except Exception as e:
+            self.metrics_logger.log_error(f"Watchdog setup error: {str(e)}")
+            raise
 
     def cleanup_watchdog(self):
-        """
-        Cleanup watchdog resources
-        """
-        if self.watchdog_observer:
-            self.watchdog_observer.stop()
-            self.watchdog_observer.join()
+        try:
+            if self.watchdog_observer:
+                self.watchdog_observer.stop()
+                self.watchdog_observer.join()
+        except Exception as e:
+            self.metrics_logger.log_error(f"Watchdog cleanup error: {str(e)}")
+            raise
 
 async def main():
+    print(f"{CYAN}=== Unity Learning Tutor with GDD Validation ==={RESET}")
+    
     # Select project path via file dialog
+    print(f"{BLUE}Please select your Unity project directory...{RESET}")
     project_path = select_project_path()
+    if not project_path:
+        print(f"{RED}No project directory selected. Exiting.{RESET}")
+        return
     
     # Select GDD file via file dialog
+    print(f"{BLUE}Please select your Game Design Document file...{RESET}")
     gdd_path = select_gdd_file()
+    if not gdd_path:
+        print(f"{RED}No GDD file selected. Exiting.{RESET}")
+        return
     
     # Extract GDD content
+    print(f"{BLUE}Extracting GDD content...{RESET}")
     gdd_content = extract_gdd_content(gdd_path)
+    if not gdd_content:
+        print(f"{RED}Could not extract content from GDD. Please check the file format.{RESET}")
+        return
     
     # Get Gemini API key
-    gemini_api_key = input("Enter your Gemini API Key: ").strip()
+    gemini_api_key = input(f"{CYAN}Enter your Gemini API Key: {RESET}").strip()
+    if not gemini_api_key:
+        print(f"{RED}API key is required. Exiting.{RESET}")
+        return
     
-    # Initialize and run learning tutor
+    # Configure Gemini API
+    print(f"{BLUE}Configuring Gemini API...{RESET}")
+    try:
+        genai.configure(api_key=gemini_api_key)
+        gemini_client = genai.GenerativeModel('gemini-2.0-flash-exp')
+        
+        # Test API key with a simple request
+        test_response = gemini_client.generate_content("Hello")
+        if not test_response:
+            print(f"{RED}API key validation failed. Please check your key.{RESET}")
+            return
+    except Exception as e:
+        print(f"{RED}Error configuring Gemini API: {e}{RESET}")
+        return
+    
+    # Validate GDD
+    print(f"{BLUE}Validating Game Design Document using Octalysis Framework...{RESET}")
+    print(f"{YELLOW}This may take a minute or two. Please wait...{RESET}")
+    
+    try:
+        validation_results = validate_gdd_with_octalysis(gemini_client, gdd_content)
+        
+        # Save initial validation report
+        report_path = save_validation_report(validation_results, project_path)
+        
+        # Display validation summary
+        print(f"\n{GREEN}=== GDD Validation Complete ==={RESET}")
+        print(f"{BLUE}Summary: {validation_results['summary']}{RESET}")
+        print(f"{BLUE}Overall Score: {validation_results['overall_score']}/10{RESET}")
+        
+        print(f"\n{GREEN}Top Recommendations:{RESET}")
+        for i, rec in enumerate(validation_results['top_recommendations'][:3], 1):
+            print(f"{i}. {rec}")
+        
+        print(f"\n{CYAN}A detailed report has been saved to: {report_path}{RESET}")
+        
+        # Refinement loop
+        while True:
+            choice = input(f"\n{CYAN}Would you like to: (1) Proceed with learning path, (2) Refine GDD, or (3) Exit? [1/2/3]: {RESET}").strip().lower()
+            
+            if choice in ['1', 'proceed']:
+                break  # Exit loop and continue to learning path
+                
+            elif choice in ['2', 'refine']:
+                # Get user feedback for refinement
+                print(f"{BLUE}Please provide specific aspects you'd like to improve based on the recommendations:{RESET}")
+                user_feedback = input().strip()
+                
+                print(f"{BLUE}Generating refined GDD suggestions...{RESET}")
+                
+                # Generate refined GDD suggestions
+                refinement_prompt = f"""
+                Based on the Octalysis Framework analysis, the original GDD has these issues:
+                {validation_results['summary']}
+                
+                The user wants to improve these specific aspects:
+                {user_feedback}
+                
+                Please provide specific, actionable edits to the GDD that would address these concerns.
+                Focus on concrete changes that would improve the game's engagement using the Octalysis Framework.
+                
+                Format your response as specific sections to add or modify in the GDD.
+                """
+                
+                try:
+                    refinement_response = gemini_client.generate_content(refinement_prompt)
+                    
+                    # Save refinement suggestions to the same report
+                    report_path = save_validation_report(
+                        validation_results, 
+                        project_path,
+                        refinement_response.text
+                    )
+                    
+                    # Update the in-memory GDD content
+                    gdd_content += "\n\n=== REFINEMENTS ===\n" + refinement_response.text
+                    
+                    print(f"\n{GREEN}Refinement suggestions have been added to: {report_path}{RESET}")
+                    print(f"{BLUE}These suggestions have been incorporated into your learning path.{RESET}")
+                    
+                except Exception as e:
+                    print(f"{RED}Error generating refinement suggestions: {e}{RESET}")
+                    
+            elif choice in ['3', 'exit']:
+                return  # Exit the program
+                
+            else:
+                print(f"{RED}Invalid choice. Please try again.{RESET}")
+    
+    except Exception as e:
+        print(f"{RED}Error during GDD validation: {e}{RESET}")
+        print(f"{YELLOW}Would you like to continue without validation? (yes/no): {RESET}")
+        continue_choice = input().strip().lower()
+        if continue_choice not in ['yes', 'y']:
+            return
+    
+    # Initialize and run learning tutor with potentially updated gdd_content
+    print(f"{BLUE}Initializing Unity Learning Tutor...{RESET}")
     tutor = UnityLearningTutor(gemini_api_key, project_path, gdd_content)
     await tutor.run_learning_path()
 
