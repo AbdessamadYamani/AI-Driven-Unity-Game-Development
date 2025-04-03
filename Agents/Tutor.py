@@ -27,6 +27,8 @@ CYAN = "\033[96m"
 RED = "\033[91m"
 RESET = "\033[0m"
 YELLOW = "\033[93m"
+MAGENTA = "\033[95m"  # Bright magenta color
+
 try:
     import docx  # For Word document generation
 except ImportError:
@@ -1525,135 +1527,220 @@ class UnityLearningTutor:
             raise
 
 async def main():
-    print(f"{CYAN}=== Unity Learning Tutor with GDD Validation ==={RESET}")
+    # Clear screen and show welcome
+    os.system('cls' if os.name == 'nt' else 'clear')
+
     
-    # Select project path via file dialog
-    print(f"{BLUE}Please select your Unity project directory...{RESET}")
+    print(f"{GREEN}Dyslexia Game Development Tutor{RESET}")
+    print(f"{YELLOW}Version 1.0 {RESET}\n")
+
+    # Project description
+    print(f"{BLUE}PROJECT PURPOSE:{RESET}")
+    print(textwrap.fill(
+        "This interactive tutor will guide you through creating a Unity game designed to "
+        "help children with dyslexia master reading fundamentals through four magical "
+        "islands, each focusing on different literacy skills.",
+        width=70
+    ))
+
+    # Best practices
+    print(f"\n{CYAN}FOR OPTIMAL EXPERIENCE:{RESET}")
+    tips = [
+        "• Keep both Unity Editor open",
+        "• Save scenes frequently (we auto-detect changes)",
+        "• Complete tasks in order - each builds on the last",
+        "• Use earned coins to unlock scripting solutions",
+        "• Name sprites descriptively (e.g., 'player_character' not 'sprite1')"
+    ]
+    print('\n'.join(tips))
+    
+    # Asset naming best practices
+    print(f"\n{MAGENTA}ASSET NAMING BEST PRACTICES:{RESET}")
+    print(textwrap.fill(
+        "Use meaningful, descriptive names for all assets including sprites, scripts, and "
+        "game objects. This helps the AI assistant provide more accurate guidance and makes "
+        "your project easier to maintain.",
+        width=70
+    ))
+    
+    naming_examples = [
+        "• ✓ 'player_character' instead of 'sprite1'",
+        "• ✓ 'background_forest' instead of 'bg'",
+        "• ✓ 'letter_a_card' instead of 'card1'",
+        "• ✓ 'jump_sound' instead of 'sound3'"
+    ]
+    print('\n'.join(naming_examples))
+
+    # Start confirmation
+    print("\n" + "="*60)
+    input(f"\n{GREEN}Press Enter to begin...{RESET}")
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+    # Clearly inform about file dialogs opening
+    print(f"{CYAN}A file dialog will now open to select your Unity project folder.{RESET}")
+    print(f"{YELLOW}Please navigate to and select your Unity project directory.{RESET}")
+    input(f"{GREEN}Press Enter to open the file dialog...{RESET}")
+    
+    # Open project path dialog
     project_path = select_project_path()
     if not project_path:
-        print(f"{RED}No project directory selected. Exiting.{RESET}")
+        print(f"{RED}No project selected. Exiting.{RESET}")
         return
     
-    # Select GDD file via file dialog
-    print(f"{BLUE}Please select your Game Design Document file...{RESET}")
+    print(f"{GREEN}✓ Project location set to:{RESET} {project_path}")
+
+    # Clearly inform about GDD file dialog
+    print(f"\n{CYAN}A file dialog will now open to select your Game Design Document (GDD).{RESET}")
+    print(f"{YELLOW}Please navigate to and select your GDD file (.docx, .pdf, or .txt).{RESET}")
+    input(f"{GREEN}Press Enter to open the file dialog...{RESET}")
+    
+    # Open GDD file dialog
     gdd_path = select_gdd_file()
     if not gdd_path:
-        print(f"{RED}No GDD file selected. Exiting.{RESET}")
+        print(f"{RED}No GDD selected. Exiting.{RESET}")
         return
     
-    # Extract GDD content
-    print(f"{BLUE}Extracting GDD content...{RESET}")
+    print(f"{GREEN}✓ Game Design Document selected:{RESET} {gdd_path}")
+
+    # Process GDD
+    print(f"\n{CYAN}Analyzing your Game Design...{RESET}")
+    print(f"{YELLOW}This will take about 1-2 minutes...{RESET}\n")
+
     gdd_content = extract_gdd_content(gdd_path)
     if not gdd_content:
         print(f"{RED}Could not extract content from GDD. Please check the file format.{RESET}")
         return
-    
+
     # Get Gemini API key
     gemini_api_key = input(f"{CYAN}Enter your Gemini API Key: {RESET}").strip()
     if not gemini_api_key:
         print(f"{RED}API key is required. Exiting.{RESET}")
         return
-    
+
     # Configure Gemini API
-    print(f"{BLUE}Configuring Gemini API...{RESET}")
     try:
         genai.configure(api_key=gemini_api_key)
         gemini_client = genai.GenerativeModel('gemini-2.0-flash-exp')
-        
-        # Test API key with a simple request
         test_response = gemini_client.generate_content("Hello")
         if not test_response:
             print(f"{RED}API key validation failed. Please check your key.{RESET}")
             return
     except Exception as e:
         print(f"{RED}Error configuring Gemini API: {e}{RESET}")
+        print(f"{YELLOW}Please try running the application again with a valid API key.{RESET}")
+        input(f"{GREEN}Press Enter to exit...{RESET}")
         return
-    
-    # Validate GDD
-    print(f"{BLUE}Validating Game Design Document using Octalysis Framework...{RESET}")
-    print(f"{YELLOW}This may take a minute or two. Please wait...{RESET}")
-    
+
+    # Validate GDD with improved error handling
     try:
         validation_results = validate_gdd_with_octalysis(gemini_client, gdd_content)
-        
-        # Save initial validation report
         report_path = save_validation_report(validation_results, project_path)
         
-        # Display validation summary
-        print(f"\n{GREEN}=== GDD Validation Complete ==={RESET}")
+        print(f"\n{GREEN}=== GDD VALIDATION COMPLETE ==={RESET}")
         print(f"{BLUE}Summary: {validation_results['summary']}{RESET}")
         print(f"{BLUE}Overall Score: {validation_results['overall_score']}/10{RESET}")
         
-        print(f"\n{GREEN}Top Recommendations:{RESET}")
+        print(f"\n{GREEN}TOP RECOMMENDATIONS:{RESET}")
         for i, rec in enumerate(validation_results['top_recommendations'][:3], 1):
             print(f"{i}. {rec}")
         
         print(f"\n{CYAN}A detailed report has been saved to: {report_path}{RESET}")
-        
+
         # Refinement loop
         while True:
             choice = input(f"\n{CYAN}Would you like to: (1) Proceed with learning path, (2) Refine GDD, or (3) Exit? [1/2/3]: {RESET}").strip().lower()
             
             if choice in ['1', 'proceed']:
-                break  # Exit loop and continue to learning path
+                break
                 
             elif choice in ['2', 'refine']:
-                # Get user feedback for refinement
-                print(f"{BLUE}Please provide specific aspects you'd like to improve based on the recommendations:{RESET}")
+                print(f"{BLUE}Please provide specific aspects you'd like to improve:{RESET}")
                 user_feedback = input().strip()
                 
                 print(f"{BLUE}Generating refined GDD suggestions...{RESET}")
                 
-                # Generate refined GDD suggestions
-                refinement_prompt = f"""
-                Based on the Octalysis Framework analysis, the original GDD has these issues:
-                {validation_results['summary']}
-                
-                The user wants to improve these specific aspects:
-                {user_feedback}
-                
-                Please provide specific, actionable edits to the GDD that would address these concerns.
-                Focus on concrete changes that would improve the game's engagement using the Octalysis Framework.
-                
-                Format your response as specific sections to add or modify in the GDD.
-                """
-                
                 try:
-                    refinement_response = gemini_client.generate_content(refinement_prompt)
-                    
-                    # Save refinement suggestions to the same report
+                    refinement_response = gemini_client.generate_content(
+                        f"Original GDD issues: {validation_results['summary']}\n"
+                        f"Requested improvements: {user_feedback}\n"
+                        "Provide specific actionable edits:"
+                    )
                     report_path = save_validation_report(
                         validation_results, 
                         project_path,
                         refinement_response.text
                     )
-                    
-                    # Update the in-memory GDD content
                     gdd_content += "\n\n=== REFINEMENTS ===\n" + refinement_response.text
-                    
-                    print(f"\n{GREEN}Refinement suggestions have been added to: {report_path}{RESET}")
-                    print(f"{BLUE}These suggestions have been incorporated into your learning path.{RESET}")
-                    
+                    print(f"\n{GREEN}Refinement suggestions added to: {report_path}{RESET}")
                 except Exception as e:
                     print(f"{RED}Error generating refinement suggestions: {e}{RESET}")
+                    print(f"{YELLOW}Please try again or proceed with the current GDD.{RESET}")
                     
             elif choice in ['3', 'exit']:
-                return  # Exit the program
+                return
                 
             else:
                 print(f"{RED}Invalid choice. Please try again.{RESET}")
     
     except Exception as e:
-        print(f"{RED}Error during GDD validation: {e}{RESET}")
-        print(f"{YELLOW}Would you like to continue without validation? (yes/no): {RESET}")
-        continue_choice = input().strip().lower()
-        if continue_choice not in ['yes', 'y']:
+        error_message = str(e)
+        print(f"{RED}Error during GDD validation: {error_message}{RESET}")
+        
+        # Handle specific error cases
+        if "Expecting ',' delimiter" in error_message or "'overall_score'" in error_message:
+            print(f"\n{YELLOW}A JSON parsing error has occurred during GDD validation.{RESET}")
+            print(f"{YELLOW}This is likely due to an issue with the API response format.{RESET}")
+            print(f"\n{CYAN}TROUBLESHOOTING SUGGESTIONS:{RESET}")
+            print("1. Please restart the application")
+            print("2. Check your internet connection")
+            print("3. Make sure your Gemini API key is valid and has sufficient quota")
+            print("4. Try with a shorter or simpler GDD document")
+            
+            input(f"\n{GREEN}Press Enter to exit the application...{RESET}")
             return
-    
-    # Initialize and run learning tutor with potentially updated gdd_content
-    print(f"{BLUE}Initializing Unity Learning Tutor...{RESET}")
-    tutor = UnityLearningTutor(gemini_api_key, project_path, gdd_content)
-    await tutor.run_learning_path()
+            
+        # General error fallback
+        print(f"{YELLOW}Would you like to continue without validation? (yes/no): {RESET}")
+        if input().strip().lower() not in ['yes', 'y']:
+            print(f"{YELLOW}Please restart the application to try again.{RESET}")
+            input(f"{GREEN}Press Enter to exit...{RESET}")
+            return
+
+    # Initialize and run learning tutor
+    try:
+        print(f"\n{GREEN}Initializing Unity Learning Tutor...{RESET}")
+        tutor = UnityLearningTutor(gemini_api_key, project_path, gdd_content)
+        
+        print(f"\n{CYAN}Ready to begin development!{RESET}")
+        print(f"{YELLOW}Remember: Type 'menu' anytime for coin options{RESET}\n")
+        
+        # Asset naming reminder
+        print(f"{MAGENTA}NAMING REMINDER:{RESET}")
+        print(textwrap.fill(
+            "For best results with the AI assistant, use descriptive names for all sprites and game objects. "
+            "Meaningful names (like 'player_jump_animation' instead of 'anim1') help the AI understand your project "
+            "and provide more accurate guidance.",
+            width=70
+        ))
+        print()
+        
+        input(f"{GREEN}Press Enter to begin your first task...{RESET}")
+        await tutor.run_learning_path()
+    except Exception as e:
+        print(f"{RED}An error occurred during the learning path: {e}{RESET}")
+        print(f"\n{YELLOW}TROUBLESHOOTING SUGGESTIONS:{RESET}")
+        print("1. Please restart the application")
+        print("2. Make sure Unity is open with the selected project")
+        print("3. Check that your GDD file is properly formatted")
+        print("4. Verify your internet connection is stable")
+        
+        input(f"\n{GREEN}Press Enter to exit the application...{RESET}")
+        return
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        print(f"\n{RED}An unexpected error occurred: {e}{RESET}")
+        print(f"{YELLOW}Please restart the application.{RESET}")
+        input(f"{GREEN}Press Enter to exit...{RESET}")
