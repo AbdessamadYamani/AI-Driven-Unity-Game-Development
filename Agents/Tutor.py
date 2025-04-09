@@ -34,211 +34,237 @@ try:
 except ImportError:
     print(f"{YELLOW}python-docx not installed. Will use text file for reports instead.{RESET}")
     print(f"{BLUE}To install: pip install python-docx{RESET}")
-
-
 def validate_gdd_with_octalysis(gemini_client, gdd_content: str) -> Dict:
     """Validate the Game Design Document using Gemini AI and the Octalysis Framework"""
     try:
-        # Suppress GRPC warnings
-        
-        # Octalysis framework prompt
+        # Octalysis framework prompt for enhancing the GDD
         prompt = f"""
         You are a game design expert specializing in gamification through the Octalysis Framework.
         
-        Analyze the following Game Design Document for a dyslexia support educational game:
+        Review and enhance the following Game Design Document for a dyslexia support educational game:
         
         {gdd_content}
         
         Instructions:
-        1. Evaluate how well the GDD incorporates the 8 core drives of the Octalysis Framework:
+        1. COMPLETELY fill ALL sections using Octalysis Framework - leave nothing empty
+        2. For any undefined original sections (like core mechanics), create new content
+        3. Ensure ALL 8 core drives are explicitly implemented:
            - Epic Meaning & Calling
            - Development & Accomplishment
            - Empowerment of Creativity & Feedback
-           - Ownership & Possession
+           - Ownership & Possession 
            - Social Influence & Relatedness
            - Scarcity & Impatience
            - Unpredictability & Curiosity
            - Loss & Avoidance
+        4. Address ALL player types with specific features
+        5. Include concrete examples for each section
+        6. Maintain original structure but enhance all components
         
-        2. For each core drive:
-           - Score the implementation on a scale of 1-10
-           - Provide specific examples from the GDD that demonstrate the core drive
-           - Suggest concrete improvements to strengthen this aspect
+        Format STRICTLY follow this template:
         
-        3. Provide overall recommendations for gamification improvements
+        ------
+        OVERALL_SCORE: [X.X/10]
         
-        4. Structure your response as a JSON object with the following format:
-        {{
-          "summary": "Brief overall assessment",
-          "octalysis_scores": {{
-            "epic_meaning": {{ "score": x, "examples": ["..."], "improvements": ["..."] }},
-            "development": {{ "score": x, "examples": ["..."], "improvements": ["..."] }},
-            "creativity": {{ "score": x, "examples": ["..."], "improvements": ["..."] }},
-            "ownership": {{ "score": x, "examples": ["..."], "improvements": ["..."] }},
-            "social": {{ "score": x, "examples": ["..."], "improvements": ["..."] }},
-            "scarcity": {{ "score": x, "examples": ["..."], "improvements": ["..."] }},
-            "unpredictability": {{ "score": x, "examples": ["..."], "improvements": ["..."] }},
-            "loss_avoidance": {{ "score": x, "examples": ["..."], "improvements": ["..."] }}
-          }},
-          "overall_score": x,
-          "top_recommendations": ["Recommendation 1", "Recommendation 2", "Recommendation 3"],
-          "implementation_priority": ["High priority item 1", "High priority item 2"]
-        }}
+        TOP_RECOMMENDATIONS:
+        - Recommendation 1
+        - Recommendation 2
+        - Recommendation 3
+        
+        SUMMARY: [2-3 sentence summary]
+        
+        TITLE: [Enhanced Title]
+        
+        ORIGINAL_CONCEPT: [Original concept summary]
+        
+        OVERVIEW: [Enhanced overview paragraph]
+        
+        CORE_MECHANICS:
+        - [Mechanic 1] (ties to [Core Drive])
+        - [Mechanic 2] (ties to [Core Drive])
+        - [Mechanic 3] (ties to [Core Drive])
+        
+        PROGRESSION_SYSTEM:
+        [Detailed progression description with core drives]
+        
+        REWARD_SYSTEMS:
+        - [Reward 1] (motivates [Core Drive])
+        - [Reward 2] (motivates [Core Drive])
+        - [Reward 3] (motivates [Core Drive])
+        
+        SOCIAL_ELEMENTS:
+        - [Feature 1] (supports [Core Drive])
+        - [Feature 2] (supports [Core Drive])
+        - [Feature 3] (supports [Core Drive])
+        
+        PLAYER_JOURNEY:
+        
+        DISCOVERY:
+        - [Feature 1]
+        - [Feature 2]
+        - [Feature 3]
+        
+        ONBOARDING:
+        - [Feature 1]
+        - [Feature 2]
+        - [Feature 3]
+        
+        SCAFFOLDING:
+        - [Feature 1]
+        - [Feature 2]
+        - [Feature 3]
+        
+        ENDGAME:
+        - [Feature 1]
+        - [Feature 2]
+        - [Feature 3]
+        
+        PLAYER_TYPES:
+        
+        ACHIEVERS:
+        - [Feature 1] (supports [Core Drive])
+        - [Feature 2] (supports [Core Drive])
+        
+        EXPLORERS:
+        - [Feature 1] (supports [Core Drive])
+        - [Feature 2] (supports [Core Drive])
+        
+        SOCIALIZERS:
+        - [Feature 1] (supports [Core Drive])
+        - [Feature 2] (supports [Core Drive])
+        
+        COMPETITORS:
+        - [Feature 1] (supports [Core Drive])
+        - [Feature 2] (supports [Core Drive])
+        
+        DYSLEXIA_SUPPORT_FEATURES:
+        - [Feature 1] (supports [Need])
+        - [Feature 2] (supports [Need])
+        - [Feature 3] (supports [Need])
+        
+        IMPLEMENTATION_ROADMAP:
+        1. [Phase 1]
+        2. [Phase 2]
+        3. [Phase 3]
+        4. [Phase 4]
+        5. [Phase 5]
+        ------
         """
-        
-        # Generate Gemini response
+
         response = gemini_client.generate_content(prompt)
         
-        # Extract JSON from response
-        json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
-        if json_match:
-            validation_results = json.loads(json_match.group(0))
-            return validation_results
-        else:
-            raise ValueError("Could not extract JSON from Gemini response")
-            
-    except Exception as e:
-        print(f"{RED}Error validating GDD: {e}{RESET}")
-        return {
-            "summary": "Error occurred during validation",
-            "error": str(e)
+        # Improved parsing with fallbacks
+        def extract_section(pattern, text, default):
+            match = re.search(pattern, text, re.DOTALL)
+            return match.group(1).strip() if match else default
+
+        def extract_list(pattern, text):
+            match = re.search(pattern, text, re.DOTALL)
+            return [line.strip() for line in match.group(1).split('\n') if line.strip()] if match else []
+
+        content = response.text
+        sections = {
+            "overall_score": float(extract_section(r'OVERALL_SCORE:\s*(\d+\.?\d*)', content, '0.0')),
+            "top_recommendations": extract_list(r'TOP_RECOMMENDATIONS:(.*?)(?=\n[A-Z]+:)', content),
+            "summary": extract_section(r'SUMMARY:(.*?)(?=\n[A-Z]+:)', content, "No summary provided"),
+            "title": extract_section(r'TITLE:(.*?)(?=\n[A-Z]+:)', content, "Enhanced Game Design Document"),
+            "original_concept": extract_section(r'ORIGINAL_CONCEPT:(.*?)(?=\n[A-Z]+:)', content, "Original concept not specified"),
+            "enhanced_gdd": {
+                "overview": extract_section(r'OVERVIEW:(.*?)(?=\n[A-Z]+:)', content, "No overview provided"),
+                "core_mechanics": extract_list(r'CORE_MECHANICS:(.*?)(?=\n[A-Z]+:)', content),
+                "progression_system": extract_section(r'PROGRESSION_SYSTEM:(.*?)(?=\n[A-Z]+:)', content, "Progression system not defined"),
+                "reward_systems": extract_list(r'REWARD_SYSTEMS:(.*?)(?=\n[A-Z]+:)', content),
+                "social_elements": extract_list(r'SOCIAL_ELEMENTS:(.*?)(?=\n[A-Z]+:)', content),
+                "player_journey": {
+                    "discovery": extract_list(r'DISCOVERY:(.*?)(?=\n[A-Z]+:)', content),
+                    "onboarding": extract_list(r'ONBOARDING:(.*?)(?=\n[A-Z]+:)', content),
+                    "scaffolding": extract_list(r'SCAFFOLDING:(.*?)(?=\n[A-Z]+:)', content),
+                    "endgame": extract_list(r'ENDGAME:(.*?)(?=\n[A-Z]+:)', content)
+                },
+                "player_types": {
+                    "achievers": extract_list(r'ACHIEVERS:(.*?)(?=\n[A-Z]+:)', content),
+                    "explorers": extract_list(r'EXPLORERS:(.*?)(?=\n[A-Z]+:)', content),
+                    "socializers": extract_list(r'SOCIALIZERS:(.*?)(?=\n[A-Z]+:)', content),
+                    "competitors": extract_list(r'COMPETITORS:(.*?)(?=\n[A-Z]+:)', content)
+                },
+                "dyslexia_support_features": extract_list(r'DYSLEXIA_SUPPORT_FEATURES:(.*?)(?=\n[A-Z]+:)', content),
+                "implementation_roadmap": extract_list(r'IMPLEMENTATION_ROADMAP:(.*?)(?=\n[A-Z]+:|\Z)', content)
+            }
         }
 
-def save_validation_report(validation_results: Dict, output_path: str, refinement_suggestions: str = None) -> str:
-    """
-    Save validation results to a Word document
-    
-    Args:
-        validation_results (Dict): Results from GDD validation
-        output_path (str): Base path to save the report
-        refinement_suggestions (str): Optional refinement suggestions to append
-        
-    Returns:
-        str: Path to the saved document
-    """
+        # Ensure minimum content in all sections
+        for section in ['core_mechanics', 'reward_systems', 'social_elements']:
+            if not sections['enhanced_gdd'][section]:
+                sections['enhanced_gdd'][section] = [f"Automatically generated {section.replace('_', ' ')} content"]
+
+        return sections
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def save_validation_report(validation_results: Dict, output_path: str) -> str:
+    """Save enhanced GDD to document with improved formatting"""
     try:
         from docx import Document
-        from docx.shared import Inches, Pt, RGBColor
+        from docx.shared import Pt
         from docx.enum.text import WD_ALIGN_PARAGRAPH
-        
-        # Create document
+
         doc = Document()
         
-        # Add title
-        title = doc.add_heading('Game Design Document Validation Report', 0)
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        # Add summary
-        doc.add_heading('Executive Summary', 1)
-        doc.add_paragraph(validation_results['summary'])
-        
-        # Add overall score
-        doc.add_heading('Overall Octalysis Score', 1)
-        overall_para = doc.add_paragraph()
-        overall_para.add_run(f"{validation_results['overall_score']}/10").bold = True
-        
-        # Add core drives analysis
-        doc.add_heading('Core Drives Analysis', 1)
-        
-        # Define color coding for scores
-        def get_score_color(score):
-            if score <= 3:
-                return RGBColor(240, 0, 0)  # Red
-            elif score <= 6:
-                return RGBColor(255, 165, 0)  # Orange
+        # Header formatting
+        def add_heading(text, level):
+            heading = doc.add_heading(text, level)
+            heading.style.font.size = Pt(14 if level ==1 else 12)
+            heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+        # Content population with fallbacks
+        def add_section(title, content, level=1):
+            add_heading(title, level)
+            if isinstance(content, list):
+                for item in content:
+                    doc.add_paragraph(f"• {item}", style='ListBullet')
             else:
-                return RGBColor(0, 128, 0)  # Green
+                doc.add_paragraph(content)
+
+        add_heading(validation_results.get('title', 'Enhanced GDD'), 0)
+        add_section('Octalysis Score', f"{validation_results.get('overall_score', 0)}/10")
+        add_section('Top Recommendations', validation_results.get('top_recommendations', []))
+        add_section('Executive Summary', validation_results.get('summary', ''))
+        add_section('Original Concept', validation_results.get('original_concept', ''))
         
-        # Process each core drive
-        for drive, details in validation_results['octalysis_scores'].items():
-            score = details['score']
-            drive_name = drive.replace('_', ' ').title()
-            
-            # Add heading for core drive
-            heading = doc.add_heading(f"{drive_name}: ", 2)
-            score_run = heading.add_run(f"{score}/10")
-            score_run.font.color.rgb = get_score_color(score)
-            
-            # Examples section
-            if details['examples']:
-                doc.add_heading("Current Implementation:", 3)
-                examples_para = doc.add_paragraph()
-                for example in details['examples']:
-                    examples_para.add_run(f"• {example}\n")
-            
-            # Improvements section
-            if details['improvements']:
-                doc.add_heading("Suggested Improvements:", 3)
-                improvements_para = doc.add_paragraph()
-                for improvement in details['improvements']:
-                    improvements_para.add_run(f"• {improvement}\n")
-                    
-        # Add top recommendations
-        doc.add_heading('Top Recommendations', 1)
-        for recommendation in validation_results['top_recommendations']:
-            doc.add_paragraph(f"• {recommendation}")
-            
-        # Add implementation priorities
-        doc.add_heading('Implementation Priorities', 1)
-        for priority in validation_results['implementation_priority']:
-            doc.add_paragraph(f"• {priority}")
-            
-        # Add refinement suggestions if provided
-        if refinement_suggestions:
-            doc.add_heading('Refinement Suggestions', 1)
-            doc.add_paragraph(refinement_suggestions)
-            
+        enhanced = validation_results.get('enhanced_gdd', {})
+        add_section('Enhanced Overview', enhanced.get('overview', ''))
+        add_section('Core Mechanics', enhanced.get('core_mechanics', []))
+        add_section('Progression System', enhanced.get('progression_system', ''))
+        add_section('Reward Systems', enhanced.get('reward_systems', []))
+        add_section('Social Elements', enhanced.get('social_elements', []))
+        
+        # Player Journey
+        add_heading('Player Journey', 1)
+        journey = enhanced.get('player_journey', {})
+        for phase in ['Discovery', 'Onboarding', 'Scaffolding', 'Endgame']:
+            add_section(phase, journey.get(phase.lower(), []), 2)
+        
+        # Player Types
+        add_heading('Player Types', 1)
+        types = enhanced.get('player_types', {})
+        for ptype in ['Achievers', 'Explorers', 'Socializers', 'Competitors']:
+            add_section(ptype, types.get(ptype.lower(), []), 2)
+        
+        # Special Features
+        add_section('Dyslexia Support', enhanced.get('dyslexia_support_features', []))
+        add_section('Implementation Roadmap', enhanced.get('implementation_roadmap', []))
+        
         # Save document
         import os
-        report_path = os.path.join(output_path, 'GDD_Validation_Report.docx')
-        doc.save(report_path)
-        
-        return report_path
-        
-    except ImportError:
-        # Fallback to text file if docx is not available
-        import os
-        report_path = os.path.join(output_path, 'GDD_Validation_Report.txt')
-        
-        with open(report_path, 'w') as f:
-            f.write("GAME DESIGN DOCUMENT VALIDATION REPORT\n")
-            f.write("====================================\n\n")
-            f.write(f"EXECUTIVE SUMMARY:\n{validation_results['summary']}\n\n")
-            f.write(f"OVERALL SCORE: {validation_results['overall_score']}/10\n\n")
-            
-            f.write("CORE DRIVES ANALYSIS:\n")
-            for drive, details in validation_results['octalysis_scores'].items():
-                drive_name = drive.replace('_', ' ').title()
-                f.write(f"\n{drive_name}: {details['score']}/10\n")
-                
-                f.write("Current Implementation:\n")
-                for example in details['examples']:
-                    f.write(f"• {example}\n")
-                    
-                f.write("Suggested Improvements:\n")
-                for improvement in details['improvements']:
-                    f.write(f"• {improvement}\n")
-            
-            f.write("\nTOP RECOMMENDATIONS:\n")
-            for recommendation in validation_results['top_recommendations']:
-                f.write(f"• {recommendation}\n")
-                
-            f.write("\nIMPLEMENTATION PRIORITIES:\n")
-            for priority in validation_results['implementation_priority']:
-                f.write(f"• {priority}\n")
-            
-            # Add refinement suggestions if provided
-            if refinement_suggestions:
-                f.write("\nREFINEMENT SUGGESTIONS:\n")
-                f.write("=======================\n\n")
-                f.write(refinement_suggestions)
-        
-        return report_path
+        path = os.path.join(output_path, 'Enhanced_GDD_Full.docx')
+        doc.save(path)
+        return path
+
     except Exception as e:
-        print(f"{RED}Error saving validation report: {e}{RESET}")
+        print(f"Error saving document: {e}")
         return None
-
-
 def select_project_path() -> str:
     """
     Open a file dialog for selecting Unity project directory
@@ -924,7 +950,7 @@ class UnityLearningTutor:
         Game Concept for Dyslexia Support Educational Game
         
         Game Design Document Insights:
-        {self.gdd_content[:1000]}
+        {self.gdd_content}
         
         Target Audience: Children with dyslexia
         Purpose: Address challenges in vowel and consonant recognition, sound blending, and word formation
@@ -935,11 +961,11 @@ class UnityLearningTutor:
         3. Blend Island: Blending consonants and diphthongs
         4. Word Island: Blending and forming words
 
-        Objective: Create an interactive, educational game that supports children with dyslexia in language learning
+        Objective: Create an interactive, educational Unity 3D game that supports children with dyslexia in language learning with gamification system
         """
             
             prompt = f"""
-        Create a comprehensive JSON learning path for Unity game development, focusing on creating an educational game for children with dyslexia.
+        Create a comprehensive JSON learning path for Unity game development, focusing on creating an educational game for children with dyslexia with gamification system.
 
         Game Concept Details:
         {game_concept}
@@ -948,10 +974,10 @@ class UnityLearningTutor:
         {sprite_details}
 
         Learning Path Requirements:
-        1. 4 progressive chapters
+        1. 4 progressive chapters each chapter can have as many task as needed to create the game
         2. Each chapter focuses on creating a specific game island
-        3. Tasks involve creating game objects, UI, and interactive elements
-        4. Final task of each chapter: Create the island's main scene
+        3. Tasks involve creating game objects,scripts , UI, and interactive elements
+        4. At the final task of each chapter the Island should be playble game
         5. Ensure hands-on, practical learning for game development
         6. Utilize available UI sprites in game design
         7. Recommend specific sprite usage for each island
@@ -1540,6 +1566,7 @@ async def main():
         "This interactive tutor will guide you through creating a Unity game designed to "
         "help children with dyslexia master reading fundamentals through four magical "
         "islands, each focusing on different literacy skills.",
+        "V 2.0",
         width=70
     ))
 
