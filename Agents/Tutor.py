@@ -1558,7 +1558,7 @@ async def main():
 
     
     print(f"{GREEN}Dyslexia Game Development Tutor{RESET}")
-    print(f"{YELLOW}Version 1.0 {RESET}\n")
+    print(f"{YELLOW}Version 1.1 {RESET}\n")
 
     # Project description
     print(f"{BLUE}PROJECT PURPOSE:{RESET}")
@@ -1566,7 +1566,6 @@ async def main():
         "This interactive tutor will guide you through creating a Unity game designed to "
         "help children with dyslexia master reading fundamentals through four magical "
         "islands, each focusing on different literacy skills.",
-        "V 2.0",
         width=70
     ))
 
