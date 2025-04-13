@@ -1133,24 +1133,34 @@ class UnityLearningTutor:
 
     def wait_for_command(self, command_event, current_task):
         """
-        Listen for user commands while waiting for scene changes
+        Listen for user commands while waiting for scene changes.
+        Now works on both Windows and Linux.
         """
+        print(f"{CYAN}Type 'menu' at any time to access coin options.{RESET}")
         try:
-            print(f"{CYAN}Type 'menu' at any time to access coin options.{RESET}")
-            
-            # Windows-compatible input checking
-            while not self._scene_change_flag.is_set() and not command_event.is_set():
-                if msvcrt.kbhit():  # Check if a key was pressed
-                    key = msvcrt.getch().decode('utf-8')
-                    if key == '\r':  # Enter key
-                        user_input = input()  # Now get the full input line
+            if os.name == 'nt':
+                # Windows-specific input checking using msvcrt
+                while not self._scene_change_flag.is_set() and not command_event.is_set():
+                    if msvcrt.kbhit():
+                        key = msvcrt.getch().decode('utf-8')
+                        if key == '\r':  # Enter key
+                            user_input = input()  # Get the full input line
+                            if user_input.lower() == 'menu':
+                                print(f"{CYAN}Opening coin options menu...{RESET}")
+                                command_event.set()
+                                return
+                    time.sleep(0.1)
+            else:
+                # For Linux (or other OS): use select for non-blocking input on sys.stdin
+                import select
+                while not self._scene_change_flag.is_set() and not command_event.is_set():
+                    rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
+                    if rlist:
+                        user_input = sys.stdin.readline().strip()
                         if user_input.lower() == 'menu':
                             print(f"{CYAN}Opening coin options menu...{RESET}")
                             command_event.set()
                             return
-                    
-                time.sleep(0.1)  # Small delay to prevent high CPU usage
-                
         except Exception as e:
             self.metrics_logger.log_error(f"Command input error: {str(e)}")
             print(f"{RED}Command input error: {e}{RESET}")
@@ -1158,8 +1168,8 @@ class UnityLearningTutor:
 
     async def validate_task_completion(self, current_task: Dict) -> bool:
         """
-        Validate task completion using scene analysis and Gemini AI
-        Handles coin purchases and script regeneration with proper user feedback
+        Validate task completion using scene analysis and Gemini AI.
+        Handles coin purchases and script regeneration with proper user feedback.
         """
         try:
             current_chapter = self.learning_path['chapters'][self.current_chapter_index]
@@ -1215,7 +1225,6 @@ class UnityLearningTutor:
             
             # Initial scene analysis
             scene_analysis = comprehensive_scene_analysis(self.project_path)
-            self.scene_analysis_count += 1
             self.metrics_logger.log_scene_analysis()
             
             # Check if task is already completed
@@ -1247,7 +1256,7 @@ class UnityLearningTutor:
             
             # Main monitoring loop
             start_time = time.time()
-            timeout = 300  # 5 minute timeout
+            timeout = 300  # 5-minute timeout
             
             while True:
                 # Check for scene changes
@@ -1260,28 +1269,42 @@ class UnityLearningTutor:
                     print(f"{YELLOW}Validation timeout. Try again.{RESET}")
                     return False
                     
-                # Non-blocking menu check
-                if msvcrt.kbhit():
-                    key = msvcrt.getch().decode('utf-8', 'ignore')
-                    if key == '\r':  # Enter key
-                        cmd = input().strip().lower()
+                # Non-blocking menu check, cross-platform implementation
+                if os.name == 'nt':
+                    if msvcrt.kbhit():
+                        key = msvcrt.getch().decode('utf-8', 'ignore')
+                        if key == '\r':  # Enter key
+                            cmd = input().strip().lower()
+                            if cmd == 'menu':
+                                print(f"{CYAN}Opening coin options...{RESET}")
+                                purchased_full_script = await self.show_coin_options_menu(current_task)
+                                if purchased_full_script:
+                                    print(f"{GREEN}Regenerating script with full implementation...{RESET}")
+                                    script_content = await self.generate_script_content(current_task)
+                                    print(f"\n{BLUE}=== FULL SCRIPT IMPLEMENTATION ==={RESET}")
+                                    print(script_content)
+                                    print(f"{BLUE}=================================={RESET}")
+                                    input(f"{CYAN}Press Enter when ready to continue validation...{RESET}")
+                                print(f"{CYAN}Resuming validation...{RESET}")
+                                start_time = time.time()
+                else:
+                    import select
+                    rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
+                    if rlist:
+                        cmd = sys.stdin.readline().strip().lower()
                         if cmd == 'menu':
                             print(f"{CYAN}Opening coin options...{RESET}")
                             purchased_full_script = await self.show_coin_options_menu(current_task)
-                            
                             if purchased_full_script:
-                                # Regenerate and show full script if purchased
                                 print(f"{GREEN}Regenerating script with full implementation...{RESET}")
                                 script_content = await self.generate_script_content(current_task)
                                 print(f"\n{BLUE}=== FULL SCRIPT IMPLEMENTATION ==={RESET}")
                                 print(script_content)
                                 print(f"{BLUE}=================================={RESET}")
                                 input(f"{CYAN}Press Enter when ready to continue validation...{RESET}")
-                            
                             print(f"{CYAN}Resuming validation...{RESET}")
-                            # Reset timeout when returning from menu
                             start_time = time.time()
-                
+                            
                 await asyncio.sleep(0.5)
             
             # Perform validation after scene change
@@ -1329,6 +1352,7 @@ class UnityLearningTutor:
             self.metrics_logger.log_error(f"Task validation failed: {str(e)}")
             print(f"{RED}Error during validation: {e}{RESET}")
             return False
+
 
     async def wait_for_scene_change(self):
         """
@@ -1558,7 +1582,7 @@ async def main():
 
     
     print(f"{GREEN}Dyslexia Game Development Tutor{RESET}")
-    print(f"{YELLOW}Version 1.1 {RESET}\n")
+    print(f"{YELLOW}Version 1.2 {RESET}\n")
 
     # Project description
     print(f"{BLUE}PROJECT PURPOSE:{RESET}")
